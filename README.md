@@ -19,3 +19,30 @@ Please note that the tweet text would be garbled if the console does not underst
     e.g. Text(en). 
 
 Indicates tweet text in English. 
+
+-------
+
+Data Structure: 
+
+    PriorityQueues (comparable element: Retweet Count). 
+
+Algo: 
+
+    Thread1: Add all (unique & non-stale) tweets in the priority queue received every 60seconds. 
+    
+    Thread2: Scheduled every 60seconds (can be tweaked), to remove stale tweets, and keep the top 10 elements in the priority queue. 
+
+Stale tweet:
+
+    A tweet that was shared N minutes before the present time. 
+
+
+Code complexity: 
+
+    Code complexity is the same for both threads. 
+    
+    Runtime: O(nlog(n))
+    Space: O(n)
+    
+    Where n is the number of tweets received per minute. 
+
