@@ -32,7 +32,7 @@ public class WorkerThread extends Thread implements Runnable{
 	    /*
 	     * Every minute print the top 10 most retweeted tweets. 
 	     */
-	    this.scheduledExecutorService.scheduleAtFixedRate(this.printEntries, 0, 5, TimeUnit.SECONDS);
+	    this.scheduledExecutorService.scheduleAtFixedRate(this.printEntries, 0, 60, TimeUnit.SECONDS);
     }
  
     @Override
