@@ -1,7 +1,7 @@
 PopularTweets
 =============
 
-Prints out the 10 most popular tweets in a rolling window of time. 
+Prints out the 10 most retweeted tweets in a rolling window of time. 
 
 Please run the jar file using: 
 
@@ -12,37 +12,26 @@ Please run the jar file using:
 
 The output format is: 
 
-    <Retweet Count> : <Created At> : Username: <screen name of the user on twitter>, Text(<language of the tweet>): <Tweet text in whatever language>
-
-Please note that the tweet text would be garbled if the console does not understand those languages. So you might get ? instead of text. The language of the tweet is written after Text. 
-
-    e.g. Text(en). 
-
-Indicates tweet text in English. 
+    Rank : <Rank between 1-10> Re-Tweet Count: <Number of times retweeted>, ID: <Tweet ID>
 
 -------
 
 Data Structure: 
 
-    PriorityQueues (comparable element: Retweet Count). 
-
-Algo: 
-
-    Thread1: Add all (unique & non-stale) tweets in the priority queue received every 60seconds. 
+    PriorityQueues (comparable element: Retweet Count in the interval). 
+    Hashtable <key=TweetID, value=TweetList> 
     
-    Thread2: Scheduled every 60seconds (can be tweaked), to remove stale tweets, and keep the top 10 elements in the priority queue. 
-
-Stale tweet:
-
-    A tweet that was shared N minutes before the present time. 
-
-
+    TweetList - DataStructure to hold all the tweets of a particular tweet ID
+    
 Code complexity: 
 
-    Code complexity is the same for both threads. 
+    For every incoming tweet, there is a constant time operation to remove stale tweets, and their references. 
+    O(K) for every incoming tweet, where K is of max-order 2. 
     
-    Runtime: O(nlog(n))
-    Space: O(n)
+    Space: O(n) : Worst case
+    Where n is the number of tweets received in an nMinute minute period. 
     
-    Where n is the number of tweets received per minute. 
+    nMinute: The size of the rolling window. 
+    
+
 
