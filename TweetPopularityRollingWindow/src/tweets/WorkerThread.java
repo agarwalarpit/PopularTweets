@@ -1,73 +1,96 @@
 package tweets;
-import java.util.ArrayList;
-import java.util.Calendar;
-import java.util.Locale;
+import java.util.Comparator;
+import java.util.Hashtable;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.Executors;
 import java.util.concurrent.PriorityBlockingQueue;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
  
-public class WorkerThread implements Runnable{
+public class WorkerThread extends Thread implements Runnable{
  
-	private PriorityBlockingQueue<Tweet> pQueue;
-	private int N; 
+	private BlockingQueue<Tweet> tweetQueue; 
 	
-    public WorkerThread(PriorityBlockingQueue<Tweet> pQueue, int N){
-        this.pQueue = pQueue;
-        this.N = N; 
+	private PriorityBlockingQueue<PriorityQueueNode> pQueue;
+	private Hashtable<Long, TweetList> hashtable; 
+	private int N;
+	
+	private ScheduledExecutorService scheduledExecutorService;
+	private PrintEntries printEntries; 
+	
+    public WorkerThread(BlockingQueue<Tweet> tweetQueue, int N){
+    	this.tweetQueue = tweetQueue;  
+    	this.N = N; 
+    	this.hashtable = new Hashtable<Long, TweetList>(); 
+    	
+    	Comparator<PriorityQueueNode> tweetComparator = new PriorityQueueNodeComparator();  
+    	this.pQueue = new PriorityBlockingQueue<>(TweetStream.PriorityQueueLength, tweetComparator);
+    	
+	    this.scheduledExecutorService = Executors.newScheduledThreadPool(1);
+	    this.printEntries = new PrintEntries(this.pQueue); 
+	    
+	    /*
+	     * Every minute print the top 10 most retweeted tweets. 
+	     */
+	    this.scheduledExecutorService.scheduleAtFixedRate(this.printEntries, 0, 5, TimeUnit.SECONDS);
     }
  
     @Override
     public void run() {
-    	/*
-		 * Operations to be done every minute: 
-		 * 1. Remove all the stale Tweets from the priority queue.
-		 * 2. Keep only the top 10 Tweets in the queue. 
-		 * 3. Print all the elements of the priority queue. 
-		 * 
-		 */
-
-		Calendar presentTime = Calendar.getInstance(); 
-		Calendar tweetTime = Calendar.getInstance();
-		ArrayList<Tweet> toRemoveTweets = new ArrayList<>();
-
-		// Find the Tweets that are stale. 
-		for (Tweet tweet : pQueue) {
-			tweetTime.setTime(tweet.getStatus().getCreatedAt());
-			long timeElapsed = TweetStream.secondsBetween(tweetTime, presentTime);
-			if (timeElapsed >= 60 * this.N) {
-				toRemoveTweets.add(tweet); 
+    	while (true) {
+    		Tweet tweet = this.tweetQueue.poll();
+    		if (tweet == null) {
+				continue;
 			}
-		}
-		
-		if (toRemoveTweets.size() > 0) {
-			System.out.println("Going to remove " + toRemoveTweets.size() + " stale elements.");
-		}
-		
-		// Remove all the stale Tweets from the Queue. 
-		for (Tweet tweet : toRemoveTweets) {
-			this.pQueue.remove(tweet); 
-		}
-		
-		// Keep only the top 10 Tweets. 
-		while (this.pQueue.size() > TweetStream.PriorityQueueLength) {
-			this.pQueue.remove();  
-		}
-		
-		System.out.println("There are " + this.pQueue.size() + " number of tweets in the priority queue");
-		// Print all the Tweets in the queue, when this thread is executed. 
-		for (Tweet tweet : pQueue) {
-			System.out.print(
-				tweet.getStatus().getRetweetCount() + 
-				": " + 
-				tweet.getStatus().getCreatedAt() + 
-				": "
-			);
+    		
+			Long key = tweet.getStatus().getId();
 			
-			System.out.print("Username: " + tweet.getStatus().getUser().getScreenName());
-			
-			if (tweet.getStatus().getLang().equals(Locale.ENGLISH.toString())) {
-				System.out.println(", Text(" + tweet.getStatus().getLang() + "): " + tweet.getStatus().getText()); 
-			} else {
-				// System.out.println("Not printed because text not English");
-				System.out.println(", Text(" + tweet.getStatus().getLang() + "): " + tweet.getStatus().getText());
+			/*
+			 * Synchronized over hashtable. 
+			 */
+			synchronized (this.hashtable) {
+				if (!this.hashtable.containsKey(key)) {
+	    			TweetList tweetList = new TweetList(N, tweet); 
+					this.hashtable.put(key, tweetList); 
+				} else {
+					TweetList tweetList = this.hashtable.get(key);
+					int retweetCount = tweetList.getTotalRetweetCount(); // This removes the stale entries. 
+					tweetList.addTweet(tweet);
+					
+					/*
+					 * Synchronized over priority queue. 
+					 */
+					synchronized (this.pQueue) {
+						
+						/*
+						 * Recycle the priority queue. Thus, removing the stale elements. 
+						 */
+				    	Comparator<PriorityQueueNode> tweetComparator = new PriorityQueueNodeComparator();  
+						PriorityBlockingQueue<PriorityQueueNode> newPQueue = new PriorityBlockingQueue<>(TweetStream.PriorityQueueLength, tweetComparator); 
+						for (PriorityQueueNode priorityQueueNode : pQueue) {
+							long tweetID = priorityQueueNode.getTweetID();
+							TweetList tempTweetList = this.hashtable.get(tweetID);
+							tempTweetList.removeOld();
+							newPQueue.add(new PriorityQueueNode(tweetID, tempTweetList.getTotalRetweetCount())); 
+						}
+						this.pQueue.clear(); 
+						this.pQueue.addAll(newPQueue); 
+						
+						/*
+						 * Placing the new incoming Tweet in the priority queue (if). 
+						 */
+						PriorityQueueNode pQueueNode = new PriorityQueueNode(key, retweetCount); 
+						if (this.pQueue.contains(pQueueNode)) {
+							this.pQueue.remove(pQueueNode); 
+						} 
+						
+						this.pQueue.add(pQueueNode);
+						
+						if (this.pQueue.size() > TweetStream.PriorityQueueLength) {
+							this.pQueue.poll(); 
+						}
+					}
+				}
 			}
 		}
     }

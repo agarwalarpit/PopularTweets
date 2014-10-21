@@ -1,11 +1,7 @@
 package tweets;
 
-import java.util.Calendar;
-import java.util.Comparator;
-import java.util.concurrent.Executors;
-import java.util.concurrent.PriorityBlockingQueue;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
 
 import twitter4j.TwitterStream;
 import twitter4j.TwitterStreamFactory;
@@ -13,37 +9,25 @@ import twitter4j.TwitterStreamFactory;
 public class TweetStream {
 	public static final int PriorityQueueLength = 10; 
 	public final int N; // N is the last N minutes.
+	private BlockingQueue<Tweet> tweetQueue; 
 
 	private TwitterStream twitterStream; 
 	private CustomStatusListener listener;  
-	
-	private Comparator<Tweet> comparator;
-	private PriorityBlockingQueue<Tweet> pQueue; 
-	
-	private ScheduledExecutorService scheduledExecutorService; 
+		
 	private WorkerThread worker ; 
 
-	public static final long secondsBetween(Calendar startDate, Calendar endDate) {
-	    long end = endDate.getTimeInMillis();
-	    long start = startDate.getTimeInMillis();
-	    return Math.abs((end - start)/1000);
-	}
-	
 	public TweetStream(int N) {
 		this.N = N; 
 		this.twitterStream = new TwitterStreamFactory().getInstance();
 		
-		this.comparator = new TweetComparator();
-		this.pQueue = new PriorityBlockingQueue<>(TweetStream.PriorityQueueLength, this.comparator);
+		// Create a "large enough" blocking queue for the incoming Tweets. 
+		this.tweetQueue = new ArrayBlockingQueue<>(1024); 
 		
-		this.listener = new CustomStatusListener(this.pQueue, this.N);
+		this.listener = new CustomStatusListener(this.tweetQueue);
 	    this.twitterStream.addListener(listener);
 	    
-	    this.scheduledExecutorService = Executors.newScheduledThreadPool(1);
-	    this.worker = new WorkerThread(this.pQueue, this.N);
-	    
-	    // Schedule the cleanup of the priority queue every 60 seconds. 
-	    this.scheduledExecutorService.scheduleAtFixedRate(worker, 0, 60, TimeUnit.SECONDS); 
+	    this.worker = new WorkerThread(this.tweetQueue, this.N);
+	    this.worker.start(); 
 	}
 	
 	public static void main(String[] args) {
